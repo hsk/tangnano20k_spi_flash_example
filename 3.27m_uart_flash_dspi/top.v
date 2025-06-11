@@ -31,11 +31,11 @@ module top (
         .addr(addr),
         .ready(spi_ready),
         .data(spi_data),
-        .sclk(mspi_clk),
         .cs(mspi_cs),
         .mosi(mspi_di),
         .miso(mspi_do)
     );
+    assign mspi_clk = clk;
 
     reg tx_mode;
     // 送信モジュール
@@ -108,40 +108,34 @@ module dspi_flash_reader (
     input [23:0] addr,
     output reg ready = 0,
     output reg [7:0] data = 8'h00,
-    output sclk,
     output reg cs = 1,
     inout mosi,
     input miso
 );
-    localparam [7:0] READ_CMD = 8'h3b;// dspi
-    assign sclk = clk; // SPIクロック出力
     reg mosi_out;
     assign mosi = cnt <= 40 ? mosi_out : 1'bz;
     reg [5:0] cnt = 0;
-    reg [39:0] shift_out;  // Total 32+8 = 40 bits
-    reg [2:0] state = IDLE;
+    reg [39:0] stack;
+    reg [1:0] state = IDLE;
     localparam IDLE = 0, SEND = 1, RECV = 2;
 
     always @(posedge clk) begin
+        cnt <= cnt + 1;
         if (state == IDLE) begin
             ready <= 0;
-            cs <= 1;
+            cnt <= 1;
             if (read) begin
-                shift_out <= {READ_CMD, addr, 8'b1111_1111};
-                cnt <= 1;
+                stack <= {8'h3b, addr, 8'b1111_1111}; // dual spi fast
                 state <= SEND;
                 cs <= 0;
                 data <= 0;
             end
         end else if (state == SEND) begin
-            mosi_out <= shift_out[39];
-            shift_out <= {shift_out[38:0], 1'b1};
-            cnt <= cnt + 1;
+            {mosi_out, stack} <= {stack, 1'b1};
             if (cnt == 40)
                 state <= RECV;
         end else if (state == RECV) begin
-            data <= {data[5:0], miso,mosi};
-            cnt <= cnt + 1;
+            data <= {data[5:0], miso, mosi};
             if (cnt == 44) begin
                 cs <= 1;
                 ready <= 1;

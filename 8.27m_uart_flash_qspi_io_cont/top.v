@@ -33,13 +33,13 @@ module top (
         .addr(addr),
         .ready(spi_ready),
         .data(spi_data),
-        .sclk(mspi_clk),
         .cs(mspi_cs),
         .di(mspi_di),
         .do(mspi_do),
         .wp(mspi_wp),
         .hold(mspi_hold)
     );
+    assign mspi_clk = clk;
 
     reg tx_mode;
     // 送信モジュール
@@ -107,68 +107,57 @@ module top (
 endmodule
 
 module qspi_flash_reader (
-    input wire clk,
-    input wire read,
+    input clk,
+    input read,
     input [23:0] addr,
     output reg ready = 0,
     output reg [7:0] data = 8'h00,
-    output sclk,
     output reg cs = 1,
     inout di,
     inout do,
     inout wp,
     inout hold
 );
-    localparam [7:0] READ_CMD = 8'heb;// qspi i/o
-    assign sclk = clk; // SPIクロック出力
-    reg di_out,do_out, wp_out, hold_out;
+    reg di_out, do_out, wp_out, hold_out;
     assign di   = cnt <= 15 ? di_out : 1'bz;
     assign do   = cnt <= 15 ? do_out : 1'bz;
     assign wp   = cnt <= 15 ? wp_out : 1'bz;
     assign hold = cnt <= 15 ? hold_out : 1'bz;
     reg [5:0] cnt = 0;
-    reg [31:0] shift_out;  // Total 32+8 = 40 bits
-    reg [2:0] state = IDLE;
+    reg [31:0] stack;
+    reg [1:0] state = IDLE;
     localparam IDLE = 0, CMD = 1, SEND = 2, RECV = 3;
     reg cont = 0;
     always @(posedge clk) begin
+        cnt <= cnt + 1;
         if (state == IDLE) begin
             ready <= 0;
-            cs <= 1;
             cnt <= 0;
             if (read) begin
                 if (cont) begin
                     cnt <= 8;
-                    shift_out <= {addr, 8'b1110_1111};
+                    stack <= {addr, 8'b1110_1111};
                     state <= SEND;
                 end else begin
-                    shift_out[7:0] <= READ_CMD;
+                    stack[7:0] <= 8'heb;// qspi i/o
                     state <= CMD;
                 end
                 cs <= 0;
                 data <= 0;
             end
         end else if (state == CMD) begin
-            di_out <= shift_out[7];
-            shift_out[7:0] <= {shift_out[6:0], 1'b1};
-            cnt <= cnt + 1;
+            {di_out, stack[7:0]} <= {stack[7:0], 1'b1};
             if (cnt == 7) begin
                 cont <= 1;
-                shift_out <= {addr, 8'b1110_1111};
+                stack <= {addr, 8'b1110_1111};
                 state <= SEND;
             end
         end else if (state == SEND) begin
-            hold_out <= shift_out[31];
-            wp_out <= shift_out[30];
-            do_out <= shift_out[29];
-            di_out <= shift_out[28];
-            shift_out <= {shift_out[27:0], 4'b1111};
-            cnt <= cnt + 1;
+            {hold_out, wp_out, do_out, di_out, stack} <= {stack, 4'b1111};
             if (cnt == 15)
                 state <= RECV;
         end else if (state == RECV) begin
-            data <= {data[3:0], hold,wp,do,di};
-            cnt <= cnt + 1;
+            data <= {data[3:0], hold, wp, do, di};
             if (cnt == 21) begin
                 cs <= 1;
                 ready <= 1;

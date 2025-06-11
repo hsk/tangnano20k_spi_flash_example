@@ -113,7 +113,7 @@ module spi_flash_reader (
 );
     reg [5:0] cnt = 0;
     reg [39:0] stack;
-    reg [2:0] state = IDLE;
+    reg [1:0] state = IDLE;
     localparam IDLE = 0, SEND = 1, RECV = 2;
 
     always @(posedge clk) begin
@@ -125,6 +125,7 @@ module spi_flash_reader (
                 stack <= {8'h0b, addr, 8'b1111_1111};// Fast Read
                 state <= SEND;
                 cs <= 0;
+                data <= 0;
             end
         end else if (state == SEND) begin
             {mosi, stack} <= {stack, 1'b1};

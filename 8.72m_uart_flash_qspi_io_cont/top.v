@@ -5,7 +5,6 @@ module top (
     inout  [3:0] mspi_io
 );
     localparam DIV = 72_000_000/115200;
-
     wire clk, pll_lock, clkoutp_dummy;
     clk72m_rpll pll_inst (
         .clkout(clk),
@@ -37,10 +36,10 @@ module top (
         .addr(addr),
         .ready(spi_ready),
         .data(spi_data),
-        .sclk(mspi_clk),
         .cs(mspi_cs),
         .io(mspi_io)
     );
+    assign mspi_clk = clk;
 
     reg tx_mode;
     // 送信モジュール
@@ -113,15 +112,13 @@ module qspi_flash_reader (
     input [23:0] addr,
     output reg ready = 0,
     output reg [7:0] data = 8'h00,
-    output sclk,
     output reg cs = 1,
     inout [3:0] io
 );
-    assign sclk = clk; // SPIクロック出力
     reg [3:0] out;
     assign io = cnt <= 15 ? out : 4'bzzzz;
     reg [4:0] cnt = 0;
-    reg [31:0] shift;
+    reg [31:0] stack;
     reg [1:0] state = IDLE;
     localparam IDLE = 0, CMD = 1, SEND = 2, RECV = 3;
     reg cont = 0;
@@ -134,22 +131,22 @@ module qspi_flash_reader (
                 cs <= 0;
                 if (cont) begin
                     cnt <= 8;
-                    shift <= {addr, 8'b1110_1111};
+                    stack <= {addr, 8'b1110_1111};
                     state <= SEND;
                 end else begin
-                    shift[7:0] <= 8'heb;// qspi i/o
+                    stack[7:0] <= 8'heb;// qspi i/o
                     state <= CMD;
                 end
             end
         end else if (state == CMD) begin
-            {out[0], shift[7:0]} <= {shift, 1'b1};
+            {out[0], stack[7:0]} <= {stack, 1'b1};
             if (cnt == 7) begin
                 cont <= 1;
-                shift <= {addr, 8'b1110_1111};
+                stack <= {addr, 8'b1110_1111};
                 state <= SEND;
             end
         end else if (state == SEND) begin
-            {out, shift} <= {shift, 4'b1111};
+            {out, stack} <= {stack, 4'b1111};
             if (cnt == 15)
                 state <= RECV;
         end else if (state == RECV) begin

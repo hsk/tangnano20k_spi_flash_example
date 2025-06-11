@@ -3,7 +3,9 @@ module top (
     output uart_tx,
     output mspi_clk, mspi_cs, 
     inout  mspi_di,
-    input  mspi_do
+    inout  mspi_do,
+    inout  mspi_wp,
+    inout  mspi_hold
 );
     localparam DIV = 72_000_000/115200;
     wire clk, pll_lock, clkoutp_dummy;
@@ -31,15 +33,17 @@ module top (
     reg spi_read = 0;
     reg [23:0] addr = 24'h400000; // 初期アドレス0x400000
 
-    dspi_flash_reader dspi_flash_inst (
+    qpi_flash_reader qspi_flash_inst (
         .clk(clk),
         .read(spi_read),
         .addr(addr),
         .ready(spi_ready),
         .data(spi_data),
         .cs(mspi_cs),
-        .mosi(mspi_di),
-        .miso(mspi_do)
+        .di(mspi_di),
+        .do(mspi_do),
+        .wp(mspi_wp),
+        .hold(mspi_hold)
     );
     assign mspi_clk = clk;
 
@@ -108,41 +112,84 @@ module top (
     end
 endmodule
 
-module dspi_flash_reader (
+module qpi_flash_reader (
     input wire clk,
     input wire read,
     input [23:0] addr,
     output reg ready = 0,
     output reg [7:0] data = 8'h00,
     output reg cs = 1,
-    inout mosi,
-    input miso
+    inout di,
+    inout do,
+    inout wp,
+    inout hold
 );
-    reg mosi_out;
-    assign mosi = cnt <= 40 ? mosi_out : 1'bz;
+    reg di_out, do_out, wp_out, hold_out;
+    assign di   = (init < 2 || cnt <= 9) ? di_out : 1'bz;
+    assign do   = (init < 2 || cnt <= 9) ? do_out : 1'bz;
+    assign wp   = (init < 2 || cnt <= 9) ? wp_out : 1'bz;
+    assign hold = (init < 2 || cnt <= 9) ? hold_out : 1'bz;
     reg [5:0] cnt = 0;
-    reg [39:0] stack;
+    reg [31:0] stack;
     reg [1:0] state = IDLE;
-    localparam IDLE = 0, SEND = 1, RECV = 2;
+    localparam IDLE = 0, CMD = 1, SEND = 2, RECV = 3;
+    reg [1:0] init = 0;
 
-    always @(posedge clk) begin
+    always @(posedge clk) if (init == 0) begin
         cnt <= cnt + 1;
         if (state == IDLE) begin
             ready <= 0;
-            cnt <= 1;
+            cnt <= 0;
+            state <= CMD;
+            stack[7:0] <= 8'h38;// qpi enable
+            cs <= 0;
+        end else if (state == CMD) begin
+            {di_out, stack[7:0]} <= {stack[7:0], 1'b1};
+            if (cnt == 7) begin
+                init <= 2;
+                cs <= 1;
+                state <= IDLE;
+            end
+        end
+    /*end else if (init == 1) begin
+        cnt <= cnt + 1;
+        if (state == IDLE) begin
+            cnt <= 0;
+            state <= CMD;
+            stack[15:0] <= {8'hc0,8'b0000_0000};// set read param
+            cs <= 0;
+        end else if (state == CMD) begin
+            {hold_out, wp_out, do_out, di_out, stack[15:0]} <= {stack[15:0], 4'b1111};
+            if (cnt == 3) begin
+                init <= 2;
+                cs <= 1;
+                state <= IDLE;
+            end
+        end*/
+    end else begin
+        cnt <= cnt + 1;
+        if (state == IDLE) begin
+            ready <= 0;
+            cnt <= 0;
             if (read) begin
-                stack <= {8'h3b, addr, 8'b1111_1111}; // dual spi fast
-                state <= SEND;
+                state <= CMD;
+                stack[7:0] <= 8'heb;// qspi i/o
                 cs <= 0;
                 data <= 0;
             end
+        end else if (state == CMD) begin
+            {hold_out, wp_out, do_out, di_out, stack[7:0]} <= {stack[7:0], 4'b1111};
+            if (cnt == 1) begin
+                stack <= {addr, 8'b1111_1111};
+                state <= SEND;
+            end
         end else if (state == SEND) begin
-            {mosi_out, stack} <= {stack, 1'b1};
-            if (cnt == 40)
+            {hold_out, wp_out, do_out, di_out, stack} <= {stack, 4'b1111};
+            if (cnt == 9)
                 state <= RECV;
         end else if (state == RECV) begin
-            data <= {data[5:0], miso, mosi};
-            if (cnt == 44 + 1) begin
+            data <= {data[3:0], hold, wp, do, di};
+            if (cnt == 11 + 1) begin
                 cs <= 1;
                 ready <= 1;
                 state <= IDLE;

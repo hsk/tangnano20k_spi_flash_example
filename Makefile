@@ -16,3 +16,7 @@ clean:
 	cd 7.72m_uart_flash_dspi_io_cont && make clean
 	cd 8.27m_uart_flash_qspi_io_cont && make clean
 	cd 8.72m_uart_flash_qspi_io_cont && make clean
+	cd 9.27m_uart_flash_qpi && make clean
+	cd 9.72m_uart_flash_qpi && make clean
+	cd 10.27m_uart_flash_qpi_cont && make clean
+	cd 10.72m_uart_flash_qpi_cont && make clean
