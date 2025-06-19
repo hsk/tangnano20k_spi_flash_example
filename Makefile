@@ -20,3 +20,15 @@ clean:
 	cd 09.72m_flash_qpi && make clean
 	cd 10.27m_flash_qpi_cont && make clean
 	cd 10.72m_flash_qpi_cont && make clean
+	cd 20.27m_rv32_uart && make clean
+	cd 20.72m_rv32_uart && make clean
+	cd 21.72m_rv32_uart_sram2 && make clean
+	cd 22.72m_rv32_uart_sram2_flash_spi && make clean
+	cd 32.72m_rv32_uart_flash_spi_sram && make clean
+	cd 33.72m_rv32_uart_flash_dspi_sram && make clean
+	cd 34.72m_rv32_uart_flash_qspi_sram && make clean
+	cd 35.72m_rv32_uart_flash_dspi_io_sram && make clean
+	cd 37.72m_rv32_uart_flash_dspi_io_cont_sram && make clean
+	cd x26.72m_rv32_uart_sram2_flash_qspi_io && make clean
+	cd x36.72m_rv32_uart_flash_qspi_io_sram && make clean
+	cd x38.72m_rv32_uart_flash_qspi_io_sram && make clean
